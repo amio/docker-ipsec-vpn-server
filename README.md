@@ -1,22 +1,39 @@
-[English](README.md) | [中文](README-zh.md)
+[English](README.md) | [简体中文](README-zh.md) | [繁體中文](README-zh-Hant.md) | [Русский](README-ru.md)
 
 # IPsec VPN Server on Docker
 
-[![Build Status](https://github.com/hwdsl2/docker-ipsec-vpn-server/actions/workflows/main-alpine.yml/badge.svg)](https://github.com/hwdsl2/docker-ipsec-vpn-server/actions/workflows/main-alpine.yml) [![GitHub Stars](docs/images/badges/github-stars.svg)](https://github.com/hwdsl2/docker-ipsec-vpn-server/stargazers) [![Docker Stars](docs/images/badges/docker-stars.svg)](https://hub.docker.com/r/hwdsl2/ipsec-vpn-server/) [![Docker Pulls](docs/images/badges/docker-pulls.svg)](https://hub.docker.com/r/hwdsl2/ipsec-vpn-server/)
+[![Build Status](https://github.com/hwdsl2/docker-ipsec-vpn-server/actions/workflows/main-alpine.yml/badge.svg)](https://github.com/hwdsl2/docker-ipsec-vpn-server/actions/workflows/main-alpine.yml) [![GitHub Stars](https://raw.githubusercontent.com/hwdsl2/badges/main/img/github-stars-docker-ipsec-vpn-server.svg)](https://github.com/hwdsl2/docker-ipsec-vpn-server/stargazers) [![Docker Stars](https://raw.githubusercontent.com/hwdsl2/badges/main/img/docker-stars-ipsec-vpn-server.svg)](https://hub.docker.com/r/hwdsl2/ipsec-vpn-server/) [![Docker Pulls](https://raw.githubusercontent.com/hwdsl2/badges/main/img/docker-pulls-ipsec-vpn-server.svg)](https://hub.docker.com/r/hwdsl2/ipsec-vpn-server/)
 
 Docker image to run an IPsec VPN server, with IPsec/L2TP, Cisco IPsec and IKEv2.
 
-Based on Alpine 3.17 or Debian 11 with [Libreswan](https://libreswan.org) (IPsec VPN software) and [xl2tpd](https://github.com/xelerance/xl2tpd) (L2TP daemon).
+Based on Alpine 3.23 or Debian 12 with [Libreswan](https://libreswan.org) (IPsec VPN software) and [xl2tpd](https://github.com/xelerance/xl2tpd) (L2TP daemon).
 
 An IPsec VPN encrypts your network traffic, so that nobody between you and the VPN server can eavesdrop on your data as it travels via the Internet. This is especially useful when using unsecured networks, e.g. at coffee shops, airports or hotel rooms.
 
-[**&raquo; See also: IPsec VPN Server Auto Setup Scripts**](https://github.com/hwdsl2/setup-ipsec-vpn)
+**Features:**
+
+- Automatically generates VPN credentials and IKEv2 configuration on first start
+- Supports IKEv2 with strong and fast ciphers (e.g. AES-GCM)
+- Generates VPN profiles to auto-configure iOS, macOS and Android devices
+- Supports Windows, macOS, iOS, Android, Chrome OS and Linux as VPN clients
+- Includes a helper script to manage IKEv2 users and certificates
+- Automatically built and published via [GitHub Actions](https://github.com/hwdsl2/docker-ipsec-vpn-server/actions)
+- Persistent data via a Docker volume
+- Multi-arch: `linux/amd64`, `linux/arm64`, `linux/arm/v7`
+
+**Also available:**
+
+- **Without Docker:** [IPsec VPN install script](https://github.com/hwdsl2/setup-ipsec-vpn)
+- **VPN:** [WireGuard](https://github.com/hwdsl2/docker-wireguard), [OpenVPN](https://github.com/hwdsl2/docker-openvpn), [Headscale](https://github.com/hwdsl2/docker-headscale)
+- **AI:** [Self-Hosted AI Stack](https://github.com/hwdsl2/self-hosted-ai-stack) for local LLMs, chat, RAG, voice and AI tools
+
+> 📘 Interested in self-hosted AI? **The Self-Hosted AI Builder’s Guide** ([Kindle](https://books2read.com/aiguide?store=amazon) · [Google Play](https://books2read.com/aiguide?store=google) · [paperback](https://books2read.com/aiguide?store=amazon-paperback&format=PAPERBACK)) is a practical guide to building, securing, and operating your own private AI stack.
 
 ## Quick start
 
 Use this command to set up an IPsec VPN server on Docker:
 
-```
+```bash
 docker run \
     --name ipsec-vpn-server \
     --restart=always \
@@ -30,32 +47,34 @@ docker run \
 
 Your VPN login details will be randomly generated. See [Retrieve VPN login details](#retrieve-vpn-login-details).
 
-To learn more about how to use this image, read the sections below.
+Alternatively, you may [set up IPsec VPN without Docker](https://github.com/hwdsl2/setup-ipsec-vpn). To learn more about how to use this image, read the sections below.
 
-## Features
+## Community
 
-- Supports IKEv2 with strong and fast ciphers (e.g. AES-GCM)
-- Generates VPN profiles to auto-configure iOS, macOS and Android devices
-- Supports Windows, macOS, iOS, Android, Chrome OS and Linux as VPN clients
-- Includes a helper script to manage IKEv2 users and certificates
+- 📬 [Get project updates and free deployment guides](https://selfhostedstack.beehiiv.com/subscribe?utm_campaign=vpn) (1–2 emails/month)
+- 💬 Join the [r/selfhostedstack](https://www.reddit.com/r/selfhostedstack/) community for discussions
+- ⭐ Star the repository if you find it useful — it helps others discover it
 
-## Install Docker
+## Requirements
 
-First, [install Docker](https://docs.docker.com/engine/install/) on your Linux server. You may also use [Podman](https://podman.io) to run this image, after [creating an alias](https://podman.io/whatis.html) for `docker`.
+- A Linux server with a public IP address or DNS name
+- Docker installed
+- VPN ports open in your firewall (UDP 500 and 4500)
+- You may also use [Podman](https://docs.podman.io) to run this image, after creating an alias for `docker`
 
-Advanced users can use this image on macOS with [Docker for Mac](https://docs.docker.com/docker-for-mac/). Before using IPsec/L2TP mode, you may need to restart the Docker container once with `docker restart ipsec-vpn-server`. This image does not support Docker for Windows.
+**Note:** Advanced users can use this image on macOS with [Docker for Mac](https://docs.docker.com/desktop/setup/install/mac-install/). Before using IPsec/L2TP mode, you may need to restart the container once with `docker restart ipsec-vpn-server`. This image does not support Docker for Windows.
 
 ## Download
 
 Get the trusted build from the [Docker Hub registry](https://hub.docker.com/r/hwdsl2/ipsec-vpn-server/):
 
-```
+```bash
 docker pull hwdsl2/ipsec-vpn-server
 ```
 
 Alternatively, you may download from [Quay.io](https://quay.io/repository/hwdsl2/ipsec-vpn-server):
 
-```
+```bash
 docker pull quay.io/hwdsl2/ipsec-vpn-server
 docker image tag quay.io/hwdsl2/ipsec-vpn-server hwdsl2/ipsec-vpn-server
 ```
@@ -66,20 +85,39 @@ Advanced users can [build from source code](docs/advanced-usage.md#build-from-so
 
 ### Image comparison
 
-Two pre-built images are available. The default Alpine-based image is only ~17MB.
+Two pre-built images are available. The default Alpine-based image is only ~19 MB.
 
 |                   | Alpine-based             | Debian-based                   |
 | ----------------- | ------------------------ | ------------------------------ |
 | Image name        | hwdsl2/ipsec-vpn-server  | hwdsl2/ipsec-vpn-server:debian |
-| Compressed size   | ~ 17 MB                  | ~ 62 MB                        |
-| Base image        | Alpine Linux 3.17        | Debian Linux 11                |
+| Compressed size   | ~ 19 MB                  | ~ 62 MB                        |
+| Base image        | Alpine Linux 3.23        | Debian Linux 12                |
 | Platforms         | amd64, arm64, arm/v7     | amd64, arm64, arm/v7           |
-| Libreswan version | 4.11                     | 4.11                           |
+| Libreswan version | 5.4.1                    | 5.4.1                          |
 | IPsec/L2TP        | ✅                       | ✅                              |
 | Cisco IPsec       | ✅                       | ✅                              |
 | IKEv2             | ✅                       | ✅                              |
 
 **Note:** To use the Debian-based image, replace every `hwdsl2/ipsec-vpn-server` with `hwdsl2/ipsec-vpn-server:debian` in this README. These images are not currently compatible with Synology NAS systems.
+
+<details>
+<summary>
+I want to use the older Libreswan version 4.
+</summary>
+
+It is generally recommended to use the latest [Libreswan](https://libreswan.org/) version 5, which is the default version in this project. However, if you want to use the older Libreswan version 4, you can build the Docker image from source code:
+
+```bash
+git clone https://github.com/hwdsl2/docker-ipsec-vpn-server
+cd docker-ipsec-vpn-server
+# Specify Libreswan version 4
+sed -i 's/SWAN_VER=5\..*/SWAN_VER=4.15/' Dockerfile Dockerfile.debian
+# To build Alpine-based image
+docker build -t hwdsl2/ipsec-vpn-server .
+# To build Debian-based image
+docker build -f Dockerfile.debian -t hwdsl2/ipsec-vpn-server:debian .
+```
+</details>
 
 ## How to use this image
 
@@ -95,7 +133,7 @@ VPN_USER=your_vpn_username
 VPN_PASSWORD=your_vpn_password
 ```
 
-This will create a user account for VPN login, which can be used by your multiple devices[*](#important-notes). The IPsec PSK (pre-shared key) is specified by the `VPN_IPSEC_PSK` environment variable. The VPN username is defined in `VPN_USER`, and VPN password is specified by `VPN_PASSWORD`.
+This will create a user account for VPN login, which can be used by your multiple devices[\*](#important-notes). The IPsec PSK (pre-shared key) is specified by the `VPN_IPSEC_PSK` environment variable. The VPN username is defined in `VPN_USER`, and VPN password is specified by `VPN_PASSWORD`.
 
 Additional VPN users are supported, and can be optionally declared in your `env` file like this. Usernames and passwords must be separated by spaces, and usernames cannot contain duplicates. All VPN users will share the same IPsec PSK.
 
@@ -104,13 +142,20 @@ VPN_ADDL_USERS=additional_username_1 additional_username_2
 VPN_ADDL_PASSWORDS=additional_password_1 additional_password_2
 ```
 
-**Note:** In your `env` file, DO NOT put `""` or `''` around values, or add space around `=`. DO NOT use these special characters within values: `\ " '`. A secure IPsec PSK should consist of at least 20 random characters.
+The variables above are only for IPsec/L2TP and IPsec/XAuth ("Cisco IPsec") modes. For IKEv2, see [Configure and use IKEv2 VPN](#configure-and-use-ikev2-vpn).
+
+> [!IMPORTANT]
+> In your `env` file, write values without surrounding quotes or spaces around `=`. Values must not contain `\`, `"`, or `'`. A secure IPsec PSK should consist of at least 20 random characters.
 
 **Note:** If you modify the `env` file after the Docker container is already created, you must remove and re-create the container for the changes to take effect. Refer to [Update Docker image](#update-docker-image).
 
+### Additional environment variables
+
+Advanced users can optionally specify a DNS name, client name and/or custom DNS servers.
+
 <details>
 <summary>
-:information_source: You may optionally specify a DNS name, client name and/or custom DNS servers. :information_source:
+Learn how to specify a DNS name, client name and/or custom DNS servers.
 </summary>
 
 Advanced users can optionally specify a DNS name for the IKEv2 server address. The DNS name must be a fully qualified domain name (FQDN). Example:
@@ -132,6 +177,8 @@ VPN_DNS_SRV1=1.1.1.1
 VPN_DNS_SRV2=1.0.0.1
 ```
 
+For more details and a list of some popular public DNS providers, see [Use alternative DNS servers](docs/advanced-usage.md).
+
 By default, no password is required when importing IKEv2 client configuration. You can choose to protect client config files using a random password.
 
 ```
@@ -145,7 +192,7 @@ VPN_PROTECT_CONFIG=yes
 
 Create a new Docker container from this image (replace `./vpn.env` with your own `env` file):
 
-```
+```bash
 docker run \
     --name ipsec-vpn-server \
     --env-file ./vpn.env \
@@ -168,7 +215,7 @@ It is recommended to enable IKEv2 when using this image. However, if you prefer 
 
 If you did not specify an `env` file in the `docker run` command above, `VPN_USER` will default to `vpnuser` and both `VPN_IPSEC_PSK` and `VPN_PASSWORD` will be randomly generated. To retrieve them, view the container logs:
 
-```
+```bash
 docker logs ipsec-vpn-server
 ```
 
@@ -187,13 +234,45 @@ The output will also include details for IKEv2 mode, if enabled.
 
 (Optional) Backup the generated VPN login details (if any) to the current directory:
 
-```
+```bash
 docker cp ipsec-vpn-server:/etc/ipsec.d/vpn-gen.env ./
+```
+
+## Using docker-compose
+
+```bash
+cp vpn.env.example vpn.env
+# Edit vpn.env if needed, then:
+docker compose up -d
+docker logs ipsec-vpn-server
+```
+
+Example `docker-compose.yml` (already included):
+
+```yaml
+volumes:
+  ikev2-vpn-data:
+
+services:
+  vpn:
+    image: hwdsl2/ipsec-vpn-server
+    restart: always
+    env_file:
+      - ./vpn.env
+    ports:
+      - "500:500/udp"
+      - "4500:4500/udp"
+    privileged: true
+    hostname: ipsec-vpn-server
+    container_name: ipsec-vpn-server
+    volumes:
+      - ikev2-vpn-data:/etc/ipsec.d
+      - /lib/modules:/lib/modules:ro
 ```
 
 ## Next steps
 
-*Read this in other languages: [English](README.md#next-steps), [中文](README-zh.md#下一步).*
+*Read this in other languages: [English](README.md#next-steps), [简体中文](README-zh.md#下一步), [繁體中文](README-zh-Hant.md#下一步), [Русский](README-ru.md#следующие-шаги).*
 
 Get your computer or device to use the VPN. Please refer to:
 
@@ -203,7 +282,7 @@ Get your computer or device to use the VPN. Please refer to:
 
 **[Configure IPsec/XAuth ("Cisco IPsec") VPN Clients](https://github.com/hwdsl2/setup-ipsec-vpn/blob/master/docs/clients-xauth.md)**
 
-**Read [:book: VPN book](https://books2read.com/vpn) to access [extra content](https://ko-fi.com/post/Support-this-project-and-get-access-to-supporter-o-O5O7FVF8J).**
+**Read [📘 VPN book](docs/vpn-book.md) to access [extra content](https://ko-fi.com/post/Support-this-project-and-get-access-to-supporter-o-O5O7FVF8J).**
 
 Enjoy your very own VPN! :sparkles::tada::rocket::sparkles:
 
@@ -223,7 +302,7 @@ Clients are set to use [Google Public DNS](https://developers.google.com/speed/p
 
 To update the Docker image and container, first [download](#download) the latest version:
 
-```
+```bash
 docker pull hwdsl2/ipsec-vpn-server
 ```
 
@@ -233,7 +312,7 @@ If the Docker image is already up to date, you should see:
 Status: Image is up to date for hwdsl2/ipsec-vpn-server:latest
 ```
 
-Otherwise, it will download the latest version. To update your Docker container, first write down all your [VPN login details](#retrieve-vpn-login-details). Then remove the Docker container with `docker rm -f ipsec-vpn-server`. Finally, re-create it using instructions from [How to use this image](#how-to-use-this-image).
+Otherwise, it will download the latest version. To update your Docker container, first note your [VPN login details](#retrieve-vpn-login-details). Then remove the Docker container with `docker rm -f ipsec-vpn-server`. Finally, re-create it using instructions from [How to use this image](#how-to-use-this-image).
 
 ## Configure and use IKEv2 VPN
 
@@ -321,10 +400,13 @@ See [Advanced usage](docs/advanced-usage.md).
 - [Use alternative DNS servers](docs/advanced-usage.md#use-alternative-dns-servers)
 - [Run without privileged mode](docs/advanced-usage.md#run-without-privileged-mode)
 - [Select VPN modes](docs/advanced-usage.md#select-vpn-modes)
+- [Enable IKEv2 perfect forward secrecy](docs/advanced-usage.md#enable-ikev2-perfect-forward-secrecy)
 - [Access other containers on the Docker host](docs/advanced-usage.md#access-other-containers-on-the-docker-host)
 - [Specify VPN server's public IP](docs/advanced-usage.md#specify-vpn-servers-public-ip)
 - [Assign static IPs to VPN clients](docs/advanced-usage.md#assign-static-ips-to-vpn-clients)
 - [Customize VPN subnets](docs/advanced-usage.md#customize-vpn-subnets)
+- [IPv6 support](docs/advanced-usage.md#ipv6-support)
+- [Split tunneling](docs/advanced-usage.md#split-tunneling)
 - [About host network mode](docs/advanced-usage.md#about-host-network-mode)
 - [Enable Libreswan logs](docs/advanced-usage.md#enable-libreswan-logs)
 - [Check server status](docs/advanced-usage.md#check-server-status)
@@ -343,15 +425,13 @@ The default IPsec configuration supports:
 * IKEv1 with PSK and XAuth ("Cisco IPsec")
 * IKEv2
 
-The ports that are exposed for this container to work are:
-
-* 4500/udp and 500/udp for IPsec
+Ports required: `500/udp` and `4500/udp` (IPsec)
 
 ## License
 
 **Note:** The software components inside the pre-built image (such as Libreswan and xl2tpd) are under the respective licenses chosen by their respective copyright holders. As for any pre-built image usage, it is the image user's responsibility to ensure that any use of this image complies with any relevant licenses for all software contained within.
 
-Copyright (C) 2016-2023 [Lin Song](https://github.com/hwdsl2) [![View my profile on LinkedIn](https://static.licdn.com/scds/common/u/img/webpromo/btn_viewmy_160x25.png)](https://www.linkedin.com/in/linsongui)   
+Copyright (C) 2016-2026 [Lin Song](https://github.com/hwdsl2) [![View my profile on LinkedIn](https://static.licdn.com/scds/common/u/img/webpromo/btn_viewmy_160x25.png)](https://www.linkedin.com/in/linsongui)   
 Based on [the work of Thomas Sarlandie](https://github.com/sarfata/voodooprivacy) (Copyright 2012)
 
 [![Creative Commons License](https://i.creativecommons.org/l/by-sa/3.0/88x31.png)](http://creativecommons.org/licenses/by-sa/3.0/)   

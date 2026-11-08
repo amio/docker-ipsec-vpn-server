@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2020-2023 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2020-2026 Lin Song <linsongui@gmail.com>
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
 # Unported License: http://creativecommons.org/licenses/by-sa/3.0/
@@ -15,11 +15,12 @@ on:
     paths:
       - '.github/workflows/main-alpine.yml'
       - '.github/workflows/buildx.yml'
-      - '.github/workflows/shellcheck.yml'
-      - '.github/workflows/vpn_test.yml'
       - '.dockerignore'
       - 'Dockerfile'
       - 'run.sh'
+
+permissions:
+  contents: read
 
 jobs:
   shellcheck:

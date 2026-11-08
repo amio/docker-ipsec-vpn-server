@@ -8,7 +8,7 @@
 # This file is part of IPsec VPN Docker image, available at:
 # https://github.com/hwdsl2/docker-ipsec-vpn-server
 #
-# Copyright (C) 2016-2023 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2016-2026 Lin Song <linsongui@gmail.com>
 # Based on the work of Thomas Sarlandie (Copyright 2012)
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
@@ -28,6 +28,30 @@ noquotes2() { printf '%s' "$1" | sed -e 's/" "/ /g' -e "s/' '/ /g"; }
 check_ip() {
   IP_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])$'
   printf '%s' "$1" | tr -d '\n' | grep -Eq "$IP_REGEX"
+}
+
+get_public_ip() {
+  local ip_addr ip_url
+  for ip_url in https://ipv4.icanhazip.com https://api.ipify.org; do
+    ip_addr=$(wget -t 2 -T 10 -4 --max-redirect=0 -qO- "$ip_url" 2>/dev/null) || continue
+    ip_addr=${ip_addr%$'\r'}
+    [[ "$ip_addr" != *$'\n'* && "$ip_addr" != *$'\r'* ]] || continue
+    if check_ip "$ip_addr"; then
+      public_ip="$ip_addr"
+      return 0
+    fi
+  done
+  return 1
+}
+
+check_ip6() {
+  IP6_REGEX='^[0-9a-fA-F]{0,4}(:[0-9a-fA-F]{0,4}){1,7}$'
+  printf '%s' "$1" | tr -d '\n' | grep -Eq "$IP6_REGEX"
+}
+
+check_cidr() {
+  CIDR_REGEX='^(([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])\.){3}([0-9]|[1-9][0-9]|1[0-9]{2}|2[0-4][0-9]|25[0-5])(/(3[0-2]|[1-2][0-9]|[0-9]))$'
+  printf '%s' "$1" | tr -d '\n' | grep -Eq "$CIDR_REGEX"
 }
 
 check_dns_name() {
@@ -157,9 +181,17 @@ if [ -n "$VPN_SHA2_TRUNCBUG" ]; then
   VPN_SHA2_TRUNCBUG=$(nospaces "$VPN_SHA2_TRUNCBUG")
   VPN_SHA2_TRUNCBUG=$(noquotes "$VPN_SHA2_TRUNCBUG")
 fi
+if [ -n "$VPN_CLIENT_VALIDITY" ]; then
+  VPN_CLIENT_VALIDITY=$(nospaces "$VPN_CLIENT_VALIDITY")
+  VPN_CLIENT_VALIDITY=$(noquotes "$VPN_CLIENT_VALIDITY")
+fi
 if [ -n "$VPN_PROTECT_CONFIG" ]; then
   VPN_PROTECT_CONFIG=$(nospaces "$VPN_PROTECT_CONFIG")
   VPN_PROTECT_CONFIG=$(noquotes "$VPN_PROTECT_CONFIG")
+fi
+if [ -n "$VPN_SPLIT_IKEV2" ]; then
+  VPN_SPLIT_IKEV2=$(nospaces "$VPN_SPLIT_IKEV2")
+  VPN_SPLIT_IKEV2=$(noquotes "$VPN_SPLIT_IKEV2")
 fi
 if [ -n "$VPN_DISABLE_IPSEC_L2TP" ]; then
   VPN_DISABLE_IPSEC_L2TP=$(nospaces "$VPN_DISABLE_IPSEC_L2TP")
@@ -177,6 +209,12 @@ if [ -n "$VPN_ENABLE_MODP1024" ]; then
   VPN_ENABLE_MODP1024=$(nospaces "$VPN_ENABLE_MODP1024")
   VPN_ENABLE_MODP1024=$(noquotes "$VPN_ENABLE_MODP1024")
 fi
+case $VPN_ENABLE_MODP1024 in
+  [yY][eE][sS])
+    echo "Warning: VPN_ENABLE_MODP1024 is no longer supported and will be ignored." >&2
+    echo "         Remove it from your 'env' file and use IKEv2 for affected Android clients." >&2
+    ;;
+esac
 if [ -n "$VPN_ENABLE_MODP1536" ]; then
   VPN_ENABLE_MODP1536=$(nospaces "$VPN_ENABLE_MODP1536")
   VPN_ENABLE_MODP1536=$(noquotes "$VPN_ENABLE_MODP1536")
@@ -200,6 +238,28 @@ fi
 if [ -n "$VPN_XAUTH_POOL" ]; then
   VPN_XAUTH_POOL=$(nospaces "$VPN_XAUTH_POOL")
   VPN_XAUTH_POOL=$(noquotes "$VPN_XAUTH_POOL")
+fi
+if [ -n "$VPN_PUBLIC_IP6" ]; then
+  VPN_PUBLIC_IP6=$(nospaces "$VPN_PUBLIC_IP6")
+  VPN_PUBLIC_IP6=$(noquotes "$VPN_PUBLIC_IP6")
+fi
+if [ -n "$VPN_IP6_NET" ]; then
+  VPN_IP6_NET=$(nospaces "$VPN_IP6_NET")
+  VPN_IP6_NET=$(noquotes "$VPN_IP6_NET")
+fi
+
+ip6=""
+if [ -n "$VPN_PUBLIC_IP6" ]; then
+  ip6="$VPN_PUBLIC_IP6"
+  check_ip6 "$ip6" || { echo "Warning: Invalid IPv6 address in 'VPN_PUBLIC_IP6'. Detecting IPv6..." >&2; ip6=""; }
+fi
+if [ -z "$ip6" ]; then
+  ip6=$(ip -6 addr 2>/dev/null | awk '/inet6 [23]/ {print $2}' | cut -d'/' -f1 | head -n1)
+  check_ip6 "$ip6" || ip6=""
+  if [ -z "$ip6" ] && ip -6 addr 2>/dev/null | grep 'inet6' | grep -qv 'inet6 \(::1\|fe80\)'; then
+    ip6=$(wget -t 2 -T 10 -qO- https://ipv6.icanhazip.com 2>/dev/null)
+    check_ip6 "$ip6" || ip6=""
+  fi
 fi
 
 if [ -z "$VPN_IPSEC_PSK" ] || [ -z "$VPN_USER" ] || [ -z "$VPN_PASSWORD" ]; then
@@ -258,19 +318,27 @@ EOF
     VPN_DNS_NAME=""
   fi
 fi
+if [ -n "$VPN_SPLIT_IKEV2" ]; then
+  if ! check_cidr "$VPN_SPLIT_IKEV2"; then
+cat <<'EOF'
+
+Warning: Invalid split VPN subnet. Check VPN_SPLIT_IKEV2 in your 'env' file.
+EOF
+    VPN_SPLIT_IKEV2=""
+  fi
+fi
+
+echo
+echo 'Trying to auto discover IP of this server...'
+# In case auto IP discovery fails, manually define the public IP
+# of this server in your 'env' file, as variable 'VPN_PUBLIC_IP'.
+public_ip=${VPN_PUBLIC_IP:-''}
+check_ip "$public_ip" || get_public_ip \
+  || exiterr "Cannot detect this server's public IP. Define it in your 'env' file as 'VPN_PUBLIC_IP'."
 
 if [ -n "$VPN_DNS_NAME" ]; then
   server_addr="$VPN_DNS_NAME"
 else
-  echo
-  echo 'Trying to auto discover IP of this server...'
-  # In case auto IP discovery fails, manually define the public IP
-  # of this server in your 'env' file, as variable 'VPN_PUBLIC_IP'.
-  public_ip=${VPN_PUBLIC_IP:-''}
-  check_ip "$public_ip" || public_ip=$(dig @resolver1.opendns.com -t A -4 myip.opendns.com +short)
-  check_ip "$public_ip" || public_ip=$(wget -t 2 -T 10 -qO- http://ipv4.icanhazip.com)
-  check_ip "$public_ip" || public_ip=$(wget -t 2 -T 10 -qO- http://ip1.dynupdate.no-ip.com)
-  check_ip "$public_ip" || exiterr "Cannot detect this server's public IP. Define it in your 'env' file as 'VPN_PUBLIC_IP'."
   server_addr="$public_ip"
 fi
 
@@ -279,10 +347,13 @@ L2TP_LOCAL=${VPN_L2TP_LOCAL:-'192.168.42.1'}
 L2TP_POOL=${VPN_L2TP_POOL:-'192.168.42.10-192.168.42.250'}
 XAUTH_NET=${VPN_XAUTH_NET:-'192.168.43.0/24'}
 XAUTH_POOL=${VPN_XAUTH_POOL:-'192.168.43.10-192.168.43.250'}
+IP6_NET=${VPN_IP6_NET:-'fddd:500:500:500::/64'}
 DNS_SRV1=${VPN_DNS_SRV1:-'8.8.8.8'}
 DNS_SRV2=${VPN_DNS_SRV2:-'8.8.4.4'}
 DNS_SRVS="\"$DNS_SRV1 $DNS_SRV2\""
 [ -n "$VPN_DNS_SRV1" ] && [ -z "$VPN_DNS_SRV2" ] && DNS_SRVS="$DNS_SRV1"
+vp_ip6=""
+[ -n "$ip6" ] && vp_ip6=",%v6:fc00::/7,%v6:!$IP6_NET"
 
 if [ -n "$VPN_DNS_SRV1" ] && [ -n "$VPN_DNS_SRV2" ]; then
   echo
@@ -319,20 +390,12 @@ case $VPN_IKEV2_ONLY in
     ;;
 esac
 ike_algs="aes256-sha2;modp2048,aes128-sha2;modp2048,aes256-sha1;modp2048,aes128-sha1;modp2048"
-ike_algs_addl_1=",aes256-sha2;modp1024,aes128-sha1;modp1024"
-ike_algs_addl_2=",aes256-sha2;modp1536,aes128-sha1;modp1536"
-case $VPN_ENABLE_MODP1024 in
-  [yY][eE][sS])
-    echo
-    echo "Enabling modp1024 in ipsec.conf..."
-    ike_algs="$ike_algs$ike_algs_addl_1"
-    ;;
-esac
+ike_algs_addl=",aes256-sha2;modp1536,aes128-sha1;modp1536"
 case $VPN_ENABLE_MODP1536 in
   [yY][eE][sS])
     echo
     echo "Enabling modp1536 in ipsec.conf..."
-    ike_algs="$ike_algs$ike_algs_addl_2"
+    ike_algs="$ike_algs$ike_algs_addl"
     ;;
 esac
 
@@ -366,21 +429,20 @@ cat > /etc/ipsec.conf <<EOF
 version 2.0
 
 config setup
-  virtual-private=%v4:10.0.0.0/8,%v4:192.168.0.0/16,%v4:172.16.0.0/12,%v4:!$L2TP_NET,%v4:!$XAUTH_NET
+  ikev1-policy=accept
+  virtual-private=%v4:10.0.0.0/8,%v4:192.168.0.0/16,%v4:172.16.0.0/12,%v4:!$L2TP_NET,%v4:!$XAUTH_NET$vp_ip6
   uniqueids=no
 
 conn shared
   left=%defaultroute
-  leftid=$server_addr
+  leftid=$public_ip
   right=%any
   encapsulation=yes
   authby=secret
   pfs=no
   rekey=no
-  keyingtries=5
   dpddelay=30
   dpdtimeout=300
-  dpdaction=clear
   ikev2=never
   ike=$ike_algs
   phase2alg=aes_gcm-null,aes128-sha1,aes256-sha1,aes256-sha2_512,aes128-sha2,aes256-sha2
@@ -535,6 +597,9 @@ $syt "net.ipv4.conf.$NET_IFACE.send_redirects=0" 2>/dev/null
 $syt "net.ipv4.conf.$NET_IFACE.rp_filter=0" 2>/dev/null
 $syt net.ipv4.tcp_rmem="4096 87380 16777216" 2>/dev/null
 $syt net.ipv4.tcp_wmem="4096 87380 16777216" 2>/dev/null
+if [ -n "$ip6" ]; then
+  $syt net.ipv6.conf.all.forwarding=1 2>/dev/null
+fi
 if modprobe -q tcp_bbr 2>/dev/null \
   && printf '%s\n%s' "4.20" "$(uname -r)" | sort -C -V; then
   $syt net.ipv4.tcp_congestion_control=bbr 2>/dev/null
@@ -545,6 +610,7 @@ ipi='iptables -I INPUT'
 ipf='iptables -I FORWARD'
 ipp='iptables -t nat -I POSTROUTING'
 res='RELATED,ESTABLISHED'
+modprobe -q ip_tables 2>/dev/null
 if ! iptables -t nat -C POSTROUTING -s "$L2TP_NET" -o "$NET_IFACE" -j MASQUERADE 2>/dev/null; then
   $ipi 1 -p udp --dport 1701 -m policy --dir in --pol none -j DROP
   $ipi 2 -m conntrack --ctstate INVALID -j DROP
@@ -570,6 +636,28 @@ if ! iptables -t nat -C POSTROUTING -s "$L2TP_NET" -o "$NET_IFACE" -j MASQUERADE
     $ipp -s "$XAUTH_NET" -o "$NET_IFACE" ! -d "$XAUTH_NET" -j MASQUERADE
   fi
   $ipp -s "$L2TP_NET" -o "$NET_IFACE" -j MASQUERADE
+fi
+
+if [ -n "$ip6" ]; then
+  modprobe -q ip6_tables 2>/dev/null
+  if ip6tables -t nat -L >/dev/null 2>&1; then
+    ipi6='ip6tables -I INPUT'
+    ipf6='ip6tables -I FORWARD'
+    ipp6='ip6tables -t nat -I POSTROUTING'
+    if ! ip6tables -t nat -C POSTROUTING -s "$IP6_NET" -o "$NET_IFACE" \
+        -j MASQUERADE 2>/dev/null; then
+      $ipi6 1 -m conntrack --ctstate INVALID -j DROP
+      $ipi6 2 -m conntrack --ctstate "$res" -j ACCEPT
+      $ipi6 3 -p udp -m multiport --dports 500,4500 -j ACCEPT
+      $ipf6 1 -m conntrack --ctstate INVALID -j DROP
+      $ipf6 2 -i "$NET_IFACE" -d "$IP6_NET" -m conntrack --ctstate "$res" -j ACCEPT
+      $ipf6 3 -s "$IP6_NET" -o "$NET_IFACE" -j ACCEPT
+      if ! $ipp6 -s "$IP6_NET" -o "$NET_IFACE" \
+          -m policy --dir out --pol none -j MASQUERADE; then
+        $ipp6 -s "$IP6_NET" -o "$NET_IFACE" ! -d "$IP6_NET" -j MASQUERADE
+      fi
+    fi
+  fi
 fi
 
 case $VPN_ANDROID_MTU_FIX in
@@ -668,10 +756,15 @@ ikev2_log="/etc/ipsec.d/ikev2setup.log"
 if grep -q " /etc/ipsec.d " /proc/mounts && [ -s "$ikev2_sh" ] && [ ! -f "$ikev2_conf" ]; then
   echo
   echo "Setting up IKEv2. This may take a few moments..."
+  if [ -n "$VPN_SPLIT_IKEV2" ]; then
+    sed -i "s|^  leftsubnet=\\\$lsubnet$|  leftsubnet=$VPN_SPLIT_IKEV2|g" "$ikev2_sh"
+  fi
   if VPN_DNS_NAME="$VPN_DNS_NAME" VPN_PUBLIC_IP="$public_ip" \
     VPN_CLIENT_NAME="$VPN_CLIENT_NAME" VPN_XAUTH_POOL="$VPN_XAUTH_POOL" \
     VPN_DNS_SRV1="$VPN_DNS_SRV1" VPN_DNS_SRV2="$VPN_DNS_SRV2" \
     VPN_PROTECT_CONFIG="$VPN_PROTECT_CONFIG" \
+    VPN_CLIENT_VALIDITY="$VPN_CLIENT_VALIDITY" \
+    VPN_PUBLIC_IP6="$ip6" \
     /bin/bash "$ikev2_sh" --auto >"$ikev2_log" 2>&1; then
     status=1
     status_text="IKEv2 setup successful."
@@ -706,7 +799,7 @@ else
 fi
 
 if [ "$status" = 2 ] && [ -n "$VPN_DNS_NAME" ]; then
-  server_addr_cur=$(grep -s "leftcert=" /etc/ipsec.d/ikev2.conf | cut -f2 -d=)
+  server_addr_cur=$(grep -s "leftcert=" /etc/ipsec.d/ikev2.conf | cut -f2 -d= | head -n 1)
   if [ "$VPN_DNS_NAME" != "$server_addr_cur" ]; then
 cat <<'EOF'
 Warning: The VPN_DNS_NAME variable you specified has no effect

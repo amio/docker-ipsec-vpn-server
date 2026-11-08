@@ -5,10 +5,13 @@
 - [使用其他的 DNS 服务器](#使用其他的-dns-服务器)
 - [不启用 privileged 模式运行](#不启用-privileged-模式运行)
 - [选择 VPN 模式](#选择-vpn-模式)
+- [启用 IKEv2 前向保密](#启用-ikev2-前向保密)
 - [访问 Docker 主机上的其它容器](#访问-docker-主机上的其它容器)
 - [指定 VPN 服务器的公有 IP](#指定-vpn-服务器的公有-ip)
 - [为 VPN 客户端指定静态 IP](#为-vpn-客户端指定静态-ip)
 - [自定义 VPN 子网](#自定义-vpn-子网)
+- [IPv6 支持](#ipv6-支持)
+- [VPN 分流](#vpn-分流)
 - [关于 host network 模式](#关于-host-network-模式)
 - [启用 Libreswan 日志](#启用-libreswan-日志)
 - [查看服务器状态](#查看服务器状态)
@@ -19,20 +22,34 @@
 
 ## 使用其他的 DNS 服务器
 
-在 VPN 已连接时，客户端配置为使用 [Google Public DNS](https://developers.google.com/speed/public-dns/)。如果偏好其它的域名解析服务，你可以在 `env` 文件中定义 `VPN_DNS_SRV1` 和 `VPN_DNS_SRV2`（可选），然后按照[说明](../README-zh.md#更新-docker-镜像)重新创建 Docker 容器。比如你想使用 [Cloudflare 的 DNS 服务](https://1.1.1.1)：
+在 VPN 已连接时，客户端默认配置为使用 [Google Public DNS](https://developers.google.com/speed/public-dns/)。如果偏好其它的域名解析服务，你可以在 `env` 文件中定义 `VPN_DNS_SRV1` 和 `VPN_DNS_SRV2`（可选），然后按照[说明](../README-zh.md#更新-docker-镜像)重新创建 Docker 容器。示例如下：
 
 ```
 VPN_DNS_SRV1=1.1.1.1
 VPN_DNS_SRV2=1.0.0.1
 ```
 
+使用 `VPN_DNS_SRV1` 指定主 DNS 服务器，使用 `VPN_DNS_SRV2` 指定辅助 DNS 服务器（可选）。
+
 请注意，如果 Docker 容器中已经配置了 IKEv2，你还需要编辑 Docker 容器内的 `/etc/ipsec.d/ikev2.conf` 并将 `8.8.8.8` 和 `8.8.4.4` 替换为你的其他的 DNS 服务器，然后重新启动 Docker 容器。
+
+以下是一些流行的公共 DNS 提供商的列表，供你参考。
+
+| 提供商 | 主 DNS | 辅助 DNS | 注释 |
+| ----- | ------ | ------- | ---- |
+| [Google Public DNS](https://developers.google.com/speed/public-dns) | 8.8.8.8 | 8.8.4.4 | 本项目默认 |
+| [Cloudflare](https://1.1.1.1/dns/) | 1.1.1.1 | 1.0.0.1 | 另见：[Cloudflare for families](https://1.1.1.1/family/) |
+| [Quad9](https://www.quad9.net) | 9.9.9.9 | 149.112.112.112 | 阻止恶意域 |
+| [OpenDNS](https://www.opendns.com/home-internet-security/) | 208.67.222.222 | 208.67.220.220 | 阻止网络钓鱼域，可配置。 |
+| [CleanBrowsing](https://cleanbrowsing.org/filters/) | 185.228.168.9 | 185.228.169.9 | [域过滤器](https://cleanbrowsing.org/filters/)可用 |
+| [NextDNS](https://nextdns.io/?from=bg25bwmp) | 按需选择 | 按需选择 | 广告拦截，免费套餐可用。[了解更多](https://nextdns.io/?from=bg25bwmp)。 |
+| [Control D](https://controld.com/free-dns) | 按需选择 | 按需选择 | 广告拦截，可配置。[了解更多](https://controld.com/free-dns)。 |
 
 ## 不启用 privileged 模式运行
 
-高级用户可以在不启用 [privileged 模式](https://docs.docker.com/engine/reference/run/#runtime-privilege-and-linux-capabilities) 的情况下使用本镜像创建一个 Docker 容器（将以下命令中的 `./vpn.env` 替换为你自己的 `env` 文件）。
+高级用户可以在不启用 [privileged 模式](https://docs.docker.com/engine/reference/run/#runtime-privilege-and-linux-capabilities)的情况下使用本镜像创建一个 Docker 容器（将以下命令中的 `./vpn.env` 替换为你自己的 `env` 文件）。
 
-**注：** 如果你的 Docker 主机运行 CentOS Stream, Oracle Linux 8+, Rocky Linux 或者 AlmaLinux，推荐使用 [privileged 模式](../README-zh.md#运行-ipsec-vpn-服务器)。如果你想要不启用 privileged 模式运行，则 **必须** 在创建 Docker 容器之前以及系统启动时运行 `modprobe ip_tables`。
+**注：** 如果你的 Docker 主机运行 CentOS Stream, Oracle Linux 8+, Rocky Linux 或者 AlmaLinux，推荐使用 [privileged 模式](../README-zh.md#运行-ipsec-vpn-服务器)。如果你想要不启用 privileged 模式运行，则 **必须** 在创建 Docker 容器之前以及系统启动时运行 `modprobe ip_tables ip6_tables`。
 
 ```
 docker run \
@@ -51,14 +68,13 @@ docker run \
     --sysctl net.ipv4.conf.default.accept_redirects=0 \
     --sysctl net.ipv4.conf.default.send_redirects=0 \
     --sysctl net.ipv4.conf.default.rp_filter=0 \
-    --sysctl net.ipv4.conf.eth0.send_redirects=0 \
-    --sysctl net.ipv4.conf.eth0.rp_filter=0 \
+    --sysctl net.ipv6.conf.all.forwarding=1 \
     hwdsl2/ipsec-vpn-server
 ```
 
-在不启用 privileged 模式运行时，容器不能更改 `sysctl` 设置。这可能会影响本镜像的某些功能。一个已知问题是 [Android MTU/MSS fix](https://github.com/hwdsl2/setup-ipsec-vpn/blob/master/docs/clients-zh.md#android-mtumss-问题) 需要另外在 `docker run` 命令添加 `--sysctl net.ipv4.ip_no_pmtu_disc=1` 才有效。如果你遇到任何问题，可以尝试换用 [privileged 模式](../README-zh.md#运行-ipsec-vpn-服务器) 重新创建容器。
+在不启用 privileged 模式运行时，容器不能更改 `sysctl` 设置。这可能会影响本镜像的某些功能。一个已知问题是 [Android/Linux MTU/MSS fix](https://github.com/hwdsl2/setup-ipsec-vpn/blob/master/docs/clients-zh.md#androidlinux-mtumss-问题) 需要另外在 `docker run` 命令添加 `--sysctl net.ipv4.ip_no_pmtu_disc=1` 才有效。如果你遇到任何问题，可以尝试换用 [privileged 模式](../README-zh.md#运行-ipsec-vpn-服务器)重新创建容器。
 
-在创建 Docker 容器之后，请转到 [获取 VPN 登录信息](../README-zh.md#获取-vpn-登录信息)。
+在创建 Docker 容器之后，请转到[获取 VPN 登录信息](../README-zh.md#获取-vpn-登录信息)。
 
 类似地，如果你使用 [Docker compose](https://docs.docker.com/compose/)，可以将 [docker-compose.yml](../docker-compose.yml) 中的 `privileged: true` 替换为：
 
@@ -75,8 +91,7 @@ docker run \
     - net.ipv4.conf.default.accept_redirects=0
     - net.ipv4.conf.default.send_redirects=0
     - net.ipv4.conf.default.rp_filter=0
-    - net.ipv4.conf.eth0.send_redirects=0
-    - net.ipv4.conf.eth0.rp_filter=0
+    - net.ipv6.conf.all.forwarding=1
 ```
 
 更多信息请参见 [compose file reference](https://docs.docker.com/compose/compose-file/)。
@@ -90,6 +105,40 @@ docker run \
 禁用 IPsec/L2TP 模式：`VPN_DISABLE_IPSEC_L2TP=yes`   
 禁用 IPsec/XAuth ("Cisco IPsec") 模式：`VPN_DISABLE_IPSEC_XAUTH=yes`   
 禁用 IPsec/L2TP 和 IPsec/XAuth 模式：`VPN_IKEV2_ONLY=yes`
+
+## 启用 IKEv2 前向保密
+
+默认情况下，IKEv2 子安全关联（Child SA）从现有 IKE SA 派生密钥材料，不进行新的 Diffie-Hellman 交换（`pfs=no`）。启用前向保密（PFS）后，每次子 SA 重新生成密钥时都会执行新的 DH 交换，从而确保即使服务器私钥在将来遭到泄露，攻击者也无法解密之前录制的会话。
+
+**注：** IKE SA 已将 ECP-256（`aes_gcm_c_256-hmac_sha2_256-ecp_256`）作为首选提案，所有现代客户端均会协商使用，因此这些客户端的会话密钥已与长期密钥材料独立。为子 SA 启用 PFS 是一项渐进式安全加固措施，而非关键漏洞修复。
+
+**客户端兼容性：** 所有现代客户端均支持 PFS。但是，macOS 和 iOS 客户端需要重新导出并导入已将 `EnablePFS` 设为 `1` 的 `.mobileconfig` 配置文件（详见下文）。Windows 客户端需要更新连接配置。RouterOS 用户需将 IKEv2 配置文件中的 `pfs-group=none` 改为 `pfs-group=ecp256`。Android 和 Linux strongSwan 客户端无需更改。Windows 7 IKEv2 客户端不支持 ECP PFS 组，若服务器启用 PFS，将无法连接。
+
+要启用 PFS，请先[在容器内打开 Bash shell](#在容器中运行-bash-shell)，然后运行：
+
+```bash
+sed -i 's/pfs=no/pfs=yes/' /etc/ipsec.d/ikev2.conf
+```
+
+完成后，`exit` 容器并重启：
+
+```
+docker restart ipsec-vpn-server
+```
+
+启用 PFS 后，需要更新以下客户端配置：
+
+- **macOS / iOS：** 运行 `docker exec -it ipsec-vpn-server ikev2.sh --exportclient <名称>` 重新导出客户端 `.mobileconfig` 文件并复制到 Docker 主机，然后编辑导出的文件以启用 PFS：
+  ```bash
+  sed -i '/EnablePFS/{n;s/0/1/;}' <名称>.mobileconfig
+  ```
+  在设备上重新导入更新后的文件。
+- **Windows：** 在提升权限的 PowerShell 窗口中运行 `Set-VpnConnection -Name "你的VPN名称" -PfsGroup ECP256`（替换为实际的 VPN 连接名称），然后重新连接 VPN。
+- **RouterOS (MikroTik)：** 在 IKEv2 对等配置文件中，将 `pfs-group=none` 改为 `pfs-group=ecp256`。
+
+Android 和 Linux strongSwan 客户端无需更改，PFS 会自动协商。
+
+要恢复默认设置（禁用 PFS），请重复上述步骤，但在 `sed` 命令中将 `pfs=yes` 替换为 `pfs=no`。
 
 ## 访问 Docker 主机上的其它容器
 
@@ -105,7 +154,7 @@ docker run \
 VPN_PUBLIC_IP=192.0.2.2
 ```
 
-请注意，如果在 Docker 容器中已经配置了 IKEv2，则此变量对 IKEv2 模式无效。在这种情况下，你可以移除 IKEv2 并使用自定义选项重新配置它。参见 [配置并使用 IKEv2 VPN](../README-zh.md#配置并使用-ikev2-vpn)。
+请注意，如果在 Docker 容器中已经配置了 IKEv2，则此变量对 IKEv2 模式无效。在这种情况下，你可以移除 IKEv2 并使用自定义选项重新配置它。参见[配置并使用 IKEv2 VPN](../README-zh.md#配置并使用-ikev2-vpn)。
 
 如果你想要 VPN 客户端在 VPN 连接处于活动状态时使用指定的公有 IP 作为其 "出站 IP"，并且指定的 IP **不是** Docker 主机上的主 IP（或默认路由），则可能需要额外的配置。在这种情况下，你可以尝试在 Docker 主机上添加一个 IPTables `SNAT` 规则。如果要在重启后继续有效，你可以将命令添加到 `/etc/rc.local`。
 
@@ -115,7 +164,7 @@ VPN_PUBLIC_IP=192.0.2.2
 iptables -t nat -I POSTROUTING -s 172.17.0.2 ! -o docker0 -j SNAT --to 192.0.2.2
 ```
 
-要检查一个已连接的 VPN 客户端的 "出站 IP"，你可以在该客户端上打开浏览器并到 [这里](https://www.ipchicken.com) 检测 IP 地址。
+要检查一个已连接的 VPN 客户端的 "出站 IP"，你可以在该客户端上打开浏览器并到[这里](https://www.ipchicken.com)检测 IP 地址。
 
 ## 为 VPN 客户端指定静态 IP
 
@@ -123,7 +172,11 @@ iptables -t nat -I POSTROUTING -s 172.17.0.2 ! -o docker0 -j SNAT --to 192.0.2.2
 
 在使用 IPsec/XAuth ("Cisco IPsec") 或 IKEv2 模式连接时，VPN 服务器（Docker 容器）在虚拟网络 `192.168.43.0/24` 内 **没有** 内网 IP。为客户端分配的内网 IP 在这个范围内：`192.168.43.10` 到 `192.168.43.250`。
 
-高级用户可以将静态 IP 分配给 VPN 客户端。这是可选的。IKEv2 模式 **不支持** 此功能。要分配静态 IP，在你的 `env` 文件中定义 `VPN_ADDL_IP_ADDRS` 变量，然后重新创建 Docker 容器。例如：
+高级用户可以将静态 IP 分配给 VPN 客户端。这是可选的。对于 **IKEv2 模式**，首先[在容器中运行 Bash shell](#在容器中运行-bash-shell)，然后按照[VPN 内网 IP 和流量](https://github.com/hwdsl2/setup-ipsec-vpn/blob/master/docs/advanced-usage-zh.md#vpn-内网-ip-和流量)中的 "IKEv2 模式：为 VPN 客户端分配静态 IP" 小节中的步骤操作。请注意，你需要跳过第 2, 3 和 5 步，并且在完成后重启 Docker 容器。这是因为对 `/etc/ipsec.conf` 的修改可能会在重启容器时被覆盖。
+
+以下说明 **仅适用于** IPsec/L2TP 和 IPsec/XAuth ("Cisco IPsec") 模式。
+
+要分配静态 IP，在你的 `env` 文件中定义 `VPN_ADDL_IP_ADDRS` 变量，然后重新创建 Docker 容器。例如：
 
 ```
 VPN_ADDL_USERS=user1 user2 user3 user4 user5
@@ -175,9 +228,88 @@ VPN_XAUTH_POOL=10.2.0.10-10.2.254.254
 
 请注意，如果你在 `env` 文件中指定了 `VPN_XAUTH_POOL`，并且在 Docker 容器中已经配置了 IKEv2，你 **必须** 在重新创建 Docker 容器之前手动编辑容器内的 `/etc/ipsec.d/ikev2.conf` 并将 `rightaddresspool=192.168.43.10-192.168.43.250` 替换为与 `VPN_XAUTH_POOL` **相同的值**。否则 IKEv2 可能会停止工作。
 
+## IPv6 支持
+
+如果 Docker 宿主机拥有公共（全局单播）IPv6 地址并且满足以下要求，IKEv2 客户端的 IPv6 支持将在容器启动时自动启用，无需手动配置。
+
+**注：** 在 Android 上使用 strongSwan VPN 客户端时，IPv6 无需额外配置即可正常工作。对于 Windows 和 macOS 客户端，请按照以下平台特定步骤进行配置。iOS 客户端目前不支持通过 IKEv2 VPN 路由 IPv6 流量；你可以改用 [OpenVPN](https://github.com/hwdsl2/openvpn-install/blob/master/README-zh.md) 或 [WireGuard](https://github.com/hwdsl2/wireguard-install/blob/master/README-zh.md)。
+
+<details>
+<summary>
+Windows：通过 VPN 路由 IPv6 流量
+</summary>
+
+如果你使用了 `ikev2_config_import.cmd` 脚本导入 IKEv2 配置，可以在提示时输入 **y** 以自动添加 IPv6 路由。否则，你需要在 PowerShell 窗口中运行以下命令一次，以通过 VPN 路由 IPv6 流量。将 `IKEv2 VPN X.X.X.X` 替换为你的 VPN 连接的实际名称。完成后，重新连接到 IKEv2 VPN。
+
+```powershell
+Add-VpnConnectionRoute -ConnectionName "IKEv2 VPN X.X.X.X" -DestinationPrefix ::/1
+Add-VpnConnectionRoute -ConnectionName "IKEv2 VPN X.X.X.X" -DestinationPrefix 8000::/1
+```
+</details>
+<details>
+<summary>
+macOS：通过 VPN 路由 IPv6 流量
+</summary>
+
+连接到 IKEv2 VPN 后，需要在终端中运行以下命令以通过 VPN 路由 IPv6 流量。每次连接后都需要运行此命令。断开 VPN 时，该路由将自动删除。接口通常为 `ipsec0`；如果同时有多个 VPN 连接处于活动状态，可能为 `ipsec1` 等，运行 `ifconfig | grep ipsec` 确认。
+
+```
+sudo route -n add -inet6 default -interface ipsec0
+```
+</details>
+
+启用 IPv6 后，IKEv2 VPN 客户端将同时获得来自 `192.168.43.0/24` 地址池的 IPv4 地址和来自 `fddd:500:500:500::/64` 地址池的 IPv6 地址。容器会将来自 VPN 客户端的 IPv6 流量通过宿主机的 IPv6 地址进行伪装（NAT），使 VPN 客户端通过隧道获得完整的 IPv6 互联网访问。
+
+**要求：**
+- Docker 宿主机必须拥有可路由的全局单播 IPv6 地址（以 `2` 或 `3` 开头）。链路本地地址 (`fe80::/10`) 不满足要求。
+- 必须为 Docker 容器启用 IPv6。参见[在 Docker 中启用 IPv6 支持](https://docs.docker.com/engine/daemon/ipv6/)。
+- Libreswan 5.0 或更新版本（Docker 镜像默认包含 5.x）。
+- IPv6 仅支持 **IKEv2 模式**。IPsec/L2TP 和 IPsec/XAuth ("Cisco IPsec") 模式不支持 IPv6。
+
+要为 Docker 容器启用 IPv6，首先在 Docker 宿主机上将以下内容添加到 `/etc/docker/daemon.json`，然后重启 Docker：
+
+```json
+{
+  "ipv6": true,
+  "fixed-cidr-v6": "fddd:1::/64"
+}
+```
+
+然后重新创建容器。`run.sh` 脚本将检测容器的公共 IPv6 地址并自动配置 IPv6 支持。
+
+要验证 IPv6 是否正常工作，请使用 IKEv2 连接到 VPN，然后检查你的 IPv6 地址，例如使用 [test-ipv6.com](https://test-ipv6.com)。
+
+**现有容器注意事项：** 如果你的容器中已经配置了 IKEv2（即 `ikev2-vpn-data` 卷中已存在 `ikev2.conf`），在容器重启或重新创建时 IPv6 **不会**自动添加到现有的 IKEv2 配置中。要为 IKEv2 启用完整的 IPv6 支持，必须移除 IKEv2 并重新配置。参见[配置并使用 IKEv2 VPN](../README-zh.md#配置并使用-ikev2-vpn) 中的"移除 IKEv2"部分。
+
+你也可以在 `env` 文件中设置 `VPN_IP6_NET`，在重新创建容器之前自定义 IPv6 地址池子网：
+
+```
+# 示例：为 IKEv2 模式指定自定义 IPv6 地址池子网
+# 必须是 ULA 范围内的 /64 子网
+VPN_IP6_NET=fddd:1234:5678:9012::/64
+```
+
+## VPN 分流
+
+在启用 VPN 分流 (split tunneling) 时，VPN 客户端将仅通过 VPN 隧道发送特定目标子网的流量。其他流量 **不会** 通过 VPN 隧道。这允许你通过 VPN 安全访问指定的网络，而无需通过 VPN 发送所有客户端的流量。VPN 分流有一些局限性，而且并非所有的 VPN 客户端都支持。
+
+高级用户可以为 IKEv2 模式启用 VPN 分流。这是可选的。将变量 `VPN_SPLIT_IKEV2` 添加到你的 `env` 文件，然后重新创建 Docker 容器。例如，如果目标子网是 `10.123.123.0/24`：
+
+```
+VPN_SPLIT_IKEV2=10.123.123.0/24
+```
+
+请注意，如果在 Docker 容器中已经配置了 IKEv2，则此变量无效。在这种情况下，有两个选项：
+
+**选项 1：** 首先[在容器中运行 Bash shell](#在容器中运行-bash-shell)，然后编辑 `/etc/ipsec.d/ikev2.conf` 并将 `leftsubnet=0.0.0.0/0` 替换为你想要的子网。在完成后，退出容器并运行 `docker restart ipsec-vpn-server`。
+
+**选项 2：** 删除 Docker 容器以及 `ikev2-vpn-data` 卷，然后重新创建容器。这将**永久删除**所有的 VPN 配置。参见[配置并使用 IKEv2 VPN](../README-zh.md#配置并使用-ikev2-vpn) 中的"移除 IKEv2"部分。
+
+另外，Windows 用户也可以通过手动添加路由的方式启用 VPN 分流。有关详细信息，请参阅 [VPN 分流](https://github.com/hwdsl2/setup-ipsec-vpn/blob/master/docs/advanced-usage-zh.md#vpn-分流)。
+
 ## 关于 host network 模式
 
-高级用户可以使用 [host network 模式](https://docs.docker.com/network/host/) 运行本镜像，通过为 `docker run` 命令添加 `--network=host` 参数来实现。另外，如果 [不启用 privileged 模式运行](#不启用-privileged-模式运行)，你可能还需要将 `eth0` 替换为你的 Docker 主机的网络接口名称。
+高级用户可以使用 [host network 模式](https://docs.docker.com/network/host/)运行本镜像，通过为 `docker run` 命令添加 `--network=host` 参数来实现。
 
 在非必要的情况下，**不推荐**使用 host network 模式运行本镜像。在该模式下，容器的网络栈未与 Docker 主机隔离，从而在使用 IPsec/L2TP 模式连接之后，VPN 客户端可以使用 Docker 主机的 VPN 内网 IP `192.168.42.1` 访问主机上的端口或服务。请注意，当你不再使用本镜像时，你需要手动清理 [run.sh](../run.sh) 所更改的 IPTables 规则和 sysctl 设置，或者重启服务器。
 
@@ -198,13 +330,13 @@ docker exec -it ipsec-vpn-server env TERM=xterm bash -l
 apk add --no-cache rsyslog
 rsyslogd
 rc-service ipsec stop; rc-service -D ipsec start >/dev/null 2>&1
-sed -i '/pluto\.pid/a rsyslogd' /opt/src/run.sh
+sed -i '\|pluto\.pid|a rm -f /var/run/rsyslogd.pid; rsyslogd' /opt/src/run.sh
 exit
 # For Debian-based image
 apt-get update && apt-get -y install rsyslog
-service rsyslog restart
+rsyslogd
 service ipsec restart
-sed -i '/pluto\.pid/a service rsyslog restart' /opt/src/run.sh
+sed -i '\|pluto\.pid|a rm -f /var/run/rsyslogd.pid; rsyslogd' /opt/src/run.sh
 exit
 ```
 
@@ -312,8 +444,8 @@ docker restart ipsec-vpn-server
 
 **注：** 预构建镜像中的软件组件（例如 Libreswan 和 xl2tpd）在其各自版权所有者选择的相应许可下。对于任何预构建的镜像的使用，用户有责任确保对该镜像的任何使用符合其中包含的所有软件的任何相关许可。
 
-版权所有 (C) 2016-2023 [Lin Song](https://github.com/hwdsl2) [![View my profile on LinkedIn](https://static.licdn.com/scds/common/u/img/webpromo/btn_viewmy_160x25.png)](https://www.linkedin.com/in/linsongui)
+版权所有 (C) 2016-2026 [Lin Song](https://github.com/hwdsl2) [![View my profile on LinkedIn](https://static.licdn.com/scds/common/u/img/webpromo/btn_viewmy_160x25.png)](https://www.linkedin.com/in/linsongui)
 
 [![Creative Commons License](https://i.creativecommons.org/l/by-sa/3.0/88x31.png)](http://creativecommons.org/licenses/by-sa/3.0/)   
-这个项目是以 [知识共享署名-相同方式共享3.0](http://creativecommons.org/licenses/by-sa/3.0/) 许可协议授权。   
+这个项目是以[知识共享署名-相同方式共享3.0](http://creativecommons.org/licenses/by-sa/3.0/) 许可协议授权。   
 必须署名： 请包括我的名字在任何衍生产品，并且让我知道你是如何改善它的！

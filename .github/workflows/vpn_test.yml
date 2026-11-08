@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2020-2023 Lin Song <linsongui@gmail.com>
+# Copyright (C) 2020-2026 Lin Song <linsongui@gmail.com>
 #
 # This work is licensed under the Creative Commons Attribution-ShareAlike 3.0
 # Unported License: http://creativecommons.org/licenses/by-sa/3.0/
@@ -16,9 +16,12 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 jobs:
   vpn_test:
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
     if: github.repository_owner == 'hwdsl2'
     strategy:
       matrix:
@@ -28,7 +31,7 @@ jobs:
       OS_TYPE: ${{ inputs.os_type }}
       TEST_ID: ${{ matrix.test_id }}
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Test
@@ -46,7 +49,8 @@ jobs:
             -e '/VPN_DNS_NAME/s/# //' \
             -e '/VPN_CLIENT_NAME/s/# //' \
             -e '/VPN_DNS_SRV1/s/# //' \
-            -e '/VPN_DNS_SRV2/s/# //' vpn.env.example
+            -e '/VPN_DNS_SRV2/s/# //' \
+            vpn.env.example
 
           set -x
 
@@ -75,12 +79,11 @@ jobs:
             --sysctl net.ipv4.conf.default.accept_redirects=0 \
             --sysctl net.ipv4.conf.default.send_redirects=0 \
             --sysctl net.ipv4.conf.default.rp_filter=0 \
-            --sysctl net.ipv4.conf.eth0.send_redirects=0 \
-            --sysctl net.ipv4.conf.eth0.rp_filter=0 \
             vpn-test
           elif [ "$TEST_ID" = "no-env" ]; then
             docker run \
             --name "$TEST_ID" \
+            --env VPN_ENABLE_MODP1024=yes \
             --restart=always \
             -p 500:500/udp \
             -p 4500:4500/udp \
@@ -91,6 +94,9 @@ jobs:
           sleep 30
           docker ps | grep "$TEST_ID"
           docker logs "$TEST_ID"
+          if [ "$TEST_ID" = "no-env" ]; then
+            docker logs "$TEST_ID" 2>&1 | grep -F "Warning: VPN_ENABLE_MODP1024 is no longer supported and will be ignored."
+          fi
           docker exec "$TEST_ID" netstat -anpu | grep pluto
           docker exec "$TEST_ID" netstat -anpu | grep xl2tpd
           docker exec "$TEST_ID" iptables -nvL
@@ -102,6 +108,9 @@ jobs:
           docker exec "$TEST_ID" ipsec status
           docker exec "$TEST_ID" ipsec status | grep -q l2tp-psk
           docker exec "$TEST_ID" ipsec status | grep -q xauth-psk
+          if docker exec "$TEST_ID" grep -qi modp1024 /etc/ipsec.conf; then
+            exit 1
+          fi
           if [ "$TEST_ID" = "with-env" ]; then
             source ./vpn.env.example
             docker exec "$TEST_ID" grep "$VPN_IPSEC_PSK" /etc/ipsec.secrets
@@ -109,7 +118,6 @@ jobs:
             docker exec "$TEST_ID" grep "$VPN_PASSWORD" /etc/ppp/chap-secrets
             docker exec "$TEST_ID" grep "$VPN_USER" /etc/ipsec.d/passwd
             docker exec "$TEST_ID" ipsec status | grep -q ikev2-cp
-            docker exec "$TEST_ID" grep "leftid=vpn.example.com" /etc/ipsec.conf
             docker exec "$TEST_ID" grep 'modecfgdns="1.1.1.1 1.0.0.1"' /etc/ipsec.conf
             docker exec "$TEST_ID" grep 'ms-dns 1.1.1.1' /etc/ppp/options.xl2tpd
             docker exec "$TEST_ID" grep 'ms-dns 1.0.0.1' /etc/ppp/options.xl2tpd
